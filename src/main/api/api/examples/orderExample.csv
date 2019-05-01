@@ -1,0 +1,3 @@
+CustomerName,CustomerID,SalesOrderNumber, Description,ItemNumber,Price,Quantity,Type
+Ricardo,230591,12345,lollipop,1,10,5,item
+Ricardo,230591,12345,water,2,20,10,service

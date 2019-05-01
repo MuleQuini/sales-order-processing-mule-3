@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"  xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">        
+    <flow name="sales-order-processing-main">
+        <http:listener xmlns:http="http://www.mulesoft.org/schema/mule/http" config-ref="sales-order-processing-httpListenerConfig" path="${http.path}" doc:name="HTTP"/>
+        <apikit:router xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" config-ref="sales-order-processing-config" doc:name="APIkit Router"/>
+        <exception-strategy ref="sales-order-processing-apiKitGlobalExceptionMapping" doc:name="Reference Exception Strategy"/>
+    </flow>
+    <flow name="sales-order-processing-console">
+        <http:listener xmlns:http="http://www.mulesoft.org/schema/mule/http" config-ref="sales-order-processing-httpListenerConfig" path="/console/*" doc:name="HTTP"/>
+        <apikit:console xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" config-ref="sales-order-processing-config" doc:name="APIkit Console"/>
+    </flow>
+    <flow name="post:/orderCSV:multipart/form-data:sales-order-processing-config">
+        <logger message="#[message.inboundAttachments.values()[0].dataSource.content]" level="INFO" doc:name="message.inboundAttachments.values()[0].dataSource.content"/>
+        <set-payload value="#[message.inboundAttachments.values()[0].dataSource.content]" doc:name="message.inboundAttachments.values()[0].dataSource.content"/>
+        <byte-array-to-object-transformer   doc:name="Byte Array to Object"/>
+        <logger message="#[payload]" level="INFO" doc:name="payload"/>
+        <dw:transform-message doc:name="Object CVS to JSON" metadata:id="1c425386-4f79-4980-95a8-208fb043ddb4">
+            <dw:input-payload doc:sample="C:\Users\52715\Desktop\ObjectCSV.csv" mimeType="application/csv"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	CustomerID: payload[0].CustomerID as :number,
+	CustomerName: payload[0].CustomerName as :string,	
+	SalesOrderNumber: payload[0].SalesOrderNumber as :number,
+	items: payload map ( payload01 , indexOfPayload01 ) -> {
+		Description: payload01.Description as :string,
+		ItemNumber: payload01.ItemNumber as :number,
+		Price: payload01.Price as :number,
+		Quantity: payload01.Quantity as :number,
+		Type: payload01.Type as :string
+	}
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <logger message="#[payload]" level="INFO" doc:name="payload"/>
+        <flow-ref name="processing" doc:name="to processing"/>
+
+    </flow>
+    <flow name="post:/orderJSON:application/json:sales-order-processing-config">
+        <logger message="#[payload]" level="INFO" doc:name="Logger"/>
+        <byte-array-to-object-transformer  doc:name="Byte Array to Object"/>
+        <logger message="#[payload]" level="INFO" doc:name="payload"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <flow-ref name="processing" doc:name="to processing"/>
+
+    </flow>
+    <apikit:mapping-exception-strategy xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" name="sales-order-processing-apiKitGlobalExceptionMapping">
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="org.mule.module.apikit.exception.NotFoundException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Resource not found&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="405">
+            <apikit:exception value="org.mule.module.apikit.exception.MethodNotAllowedException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Method not allowed&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="415">
+            <apikit:exception value="org.mule.module.apikit.exception.UnsupportedMediaTypeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Unsupported media type&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="406">
+            <apikit:exception value="org.mule.module.apikit.exception.NotAcceptableException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Not acceptable&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="400">
+            <apikit:exception value="org.mule.module.apikit.exception.BadRequestException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Bad request&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+    </apikit:mapping-exception-strategy>
+</mule>

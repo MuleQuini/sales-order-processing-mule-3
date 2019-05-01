@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:json="http://www.mulesoft.org/schema/mule/json"
+	xmlns:objectstore="http://www.mulesoft.org/schema/mule/objectstore"
+	xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/objectstore http://www.mulesoft.org/schema/mule/objectstore/current/mule-objectstore.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd">
+	<flow name="processing">
+		<logger message="#[payload]" level="INFO" doc:name="payload" />
+		<set-variable variableName="SalesOrderNumber" value="#[payload.SalesOrderNumber]"
+			doc:name="SalesOrderNumber" />
+		<logger message="#[flowVars.SalesOrderNumber]" level="INFO"
+			doc:name="SalesOrderNumber" />
+		<vm:outbound-endpoint exchange-pattern="one-way"
+			path="${vm.queue}" connector-ref="VM" doc:name="VM Publish">
+			<vm:transaction action="NONE" />
+		</vm:outbound-endpoint>
+		<objectstore:store config-ref="ObjectStore__Connector"
+			key="#[flowVars.SalesOrderNumber]" value-ref="#[&quot;CONFIRMED&quot;]"
+			overwrite="true" doc:name="&quot;CONFIRMED&quot;" />
+		<set-payload value="#[&quot;OK&quot;]" doc:name="Set Payload" />
+	</flow>
+	<flow name="processingData">
+		<vm:inbound-endpoint exchange-pattern="one-way"
+			path="${vm.queue}" connector-ref="VM" doc:name="VM Consume" />
+		<logger message="#[payload]" level="INFO" doc:name="payload" />
+		<set-variable variableName="PAYLOAD" value="#[payload]"
+			doc:name="PAYLOAD" />
+		<set-variable variableName="SalesOrderNumber" value="#[payload.SalesOrderNumber]"
+			doc:name="SalesOrderNumber" />
+		<logger message="#[flowVars.SalesOrderNumber]" level="INFO"
+			doc:name="SalesOrderNumber" />
+		<scatter-gather doc:name="Scatter-Gather">
+			<flow-ref name="processingItems" doc:name="to processingItems" />
+			<flow-ref name="processingServices" doc:name="to processingServices" />
+		</scatter-gather>
+		<objectstore:store config-ref="ObjectStore__Connector"
+			key="#[flowVars.SalesOrderNumber]" value-ref="#[&quot;PROCESSED&quot;]"
+			overwrite="true" doc:name="&quot;PROCESSED&quot;" />
+		<logger message="#[flowVars.PAYLOAD]" level="INFO" doc:name="flowVars.PAYLOAD" />
+		<set-payload value="#[flowVars.PAYLOAD]" doc:name="flowVars.PAYLOAD" />
+		<logger message="#[payload]" level="INFO" doc:name="payload" />
+		<flow-ref name="processingSummary" doc:name="to processingSummary" />
+		<objectstore:store config-ref="ObjectStore__Connector"
+			key="#[flowVars.SalesOrderNumber]" value-ref="#[&quot;COMPLETE&quot;]"
+			overwrite="true" doc:name="&quot;COMPLETE&quot;" />
+	</flow>
+	<flow name="processingItems">
+		<json:object-to-json-transformer
+			doc:name="Object to JSON" />
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	customerId: payload.CustomerID as :string,
+	customerName: payload.CustomerName,
+	orderNumber: payload.SalesOrderNumber as :string,
+	lines: payload.items filter ($.Type == "item" ) map ( item , indexOfItem ) -> {
+		itemNumber: item.ItemNumber as :string,
+		quantity: item.Quantity as :string,
+		price: item.Price as :string,
+		description: item.Description
+	}
+}]]></dw:set-payload>
+		</dw:transform-message>
+		<logger message="#[payload]" level="INFO" doc:name="Logger" />
+		<http:request config-ref="HTTP_Request_configuration_Shipping"
+			path="/order" method="POST" doc:name="Request Shipping">
+			<http:request-builder>
+				<http:header headerName="Content-Type" value="application/json" />
+			</http:request-builder>
+		</http:request>
+		<objectstore:store config-ref="ObjectStore__Connector"
+			key="#[flowVars.SalesOrderNumber]" value-ref="#[&quot;SHIPPED&quot;]"
+			overwrite="true" doc:name="&quot;SHIPPED&quot;" />
+	</flow>
+	<flow name="processingServices">
+		<json:object-to-json-transformer
+			doc:name="Object to JSON" />
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	customerId: payload.CustomerID as :string,
+	customerName: payload.CustomerName,
+	orderNumber: payload.SalesOrderNumber as :string,
+	lines: payload.items filter ($.Type == "service" ) map ( item , indexOfItem ) -> {
+		itemNumber: item.ItemNumber,
+		quantity: item.Quantity,
+		price: item.Price,
+		description: item.Description
+		}
+}]]></dw:set-payload>
+		</dw:transform-message>
+		<logger message="#[payload]" level="INFO" doc:name="Logger" />
+		<http:request config-ref="HTTP_Request_configuration_Scheduler"
+			path="/order" method="POST" doc:name="Request Sheduler">
+			<http:request-builder>
+				<http:header headerName="Content-Type" value="application/json" />
+			</http:request-builder>
+		</http:request>
+		<objectstore:store config-ref="ObjectStore__Connector"
+			key="#[flowVars.SalesOrderNumber]" value-ref="#[&quot;SHEDULED&quot;]"
+			overwrite="true" doc:name="&quot;SHEDULED&quot;" />
+	</flow>
+    <flow name="processingSummary">
+        <logger message="#[payload]" level="INFO" doc:name="payoad"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+payload]]></dw:set-payload>
+            <dw:set-variable variableName="Total_Items_cost"><![CDATA[%dw 1.0
+%output application/json
+---
+(payload.items filter ($.Type=='item')) map $.Price*$.Quantity reduce ($$ + $)]]></dw:set-variable>
+            <dw:set-variable variableName="Total_Services_cost"><![CDATA[%dw 1.0
+%output application/java
+---
+(payload.items filter ($.Type=='service')) map $.Price*$.Quantity reduce ($$ + $)]]></dw:set-variable>
+        </dw:transform-message>
+        <logger message="#[flowVars.Total_Items_cost]" level="INFO" doc:name="Total_Items_cost"/>
+        <logger message="#[flowVars.Total_Services_cost]" level="INFO" doc:name="Total_Services_cost"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	"CustomerName": payload.CustomerName,
+	"CustomerID": payload.CustomerID as :string,
+	"SalesOrderNumber": payload.SalesOrderNumber as :string,
+	"TotalCost" : (flowVars.Total_Services_cost as :number + flowVars.Total_Items_cost as :number) as :number {format:".00"},
+	"TotalItemCost" : flowVars.Total_Items_cost as :number {format:".00"},
+	"TotalServiceCost" : flowVars.Total_Services_cost as :number {format:".00"}
+	
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="#[payload]" level="INFO" doc:name="payload"/>
+    </flow>
+
+</mule>

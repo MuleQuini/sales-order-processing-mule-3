@@ -1,0 +1,12 @@
+#%RAML 1.0 DataType
+
+type: object
+properties:
+  ItemNumber : integer
+  Quantity : integer
+  Type :
+    enum:
+      - item
+      - service
+  Price : integer
+  Description : string

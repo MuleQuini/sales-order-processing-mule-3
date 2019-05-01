@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:objectstore="http://www.mulesoft.org/schema/mule/objectstore"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/objectstore http://www.mulesoft.org/schema/mule/objectstore/current/mule-objectstore.xsd http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<http:listener-config xmlns:http="http://www.mulesoft.org/schema/mule/http" name="sales-order-processing-httpListenerConfig" host="0.0.0.0" port="${http.port}" doc:name="HTTP Listener Configuration"/>
+	<apikit:config xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" name="sales-order-processing-config" raml="api/sales-order-processing.raml" consoleEnabled="false" doc:name="Router" keepRamlBaseUri="false"/>
+	<http:request-config name="HTTP_Request_configuration_Scheduler" protocol="${scheduler.protocol}" host="${scheduler.host}" basePath="${scheduler.path}" doc:name="HTTP Request Configuration" port="${scheduler.port}"/>
+    <http:request-config name="HTTP_Request_configuration_Shipping" protocol="${shipping.protocol}" host="${shipping.host}" basePath="${shipping.path}" doc:name="HTTP Request Configuration" port="${shipping.port}"/>
+    <vm:connector name="VM" validateConnections="true" doc:name="VM">
+        <vm:queue-profile>
+            <default-in-memory-queue-store/>
+        </vm:queue-profile>
+    </vm:connector>      
+    <objectstore:config name="ObjectStore__Connector" partition="status" doc:name="ObjectStore: Connector"/>
+</mule>
+	
